@@ -1,0 +1,30 @@
+{
+  "seed": 42,
+  "duration_ms": 2200,
+  "a_to_b": {
+    "latency_ms": 100,
+    "bandwidth_bps": 1000,
+    "loss_rate": 0,
+    "queue_bytes": 100
+  },
+  "b_to_a": {
+    "latency_ms": 100,
+    "bandwidth_bps": 1000,
+    "loss_rate": 0,
+    "queue_bytes": 100
+  },
+  "actions": [
+    {"time_ms": 0, "op": "send", "from": "a", "seq": 1, "size": 100},
+    {"time_ms": 0, "op": "send", "from": "a", "seq": 2, "size": 100},
+    {
+      "time_ms": 150,
+      "op": "update",
+      "from": "a",
+      "latency_ms": 0,
+      "bandwidth_bps": 10000,
+      "loss_rate": 0,
+      "queue_bytes": 1000
+    },
+    {"time_ms": 1000, "op": "send", "from": "a", "seq": 3, "size": 100}
+  ]
+}
