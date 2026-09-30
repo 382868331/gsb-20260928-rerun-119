@@ -1,7 +1,5 @@
 package link
 
-import "time"
-
 func validateConfig(c Config) error {
 	if c.Latency < 0 || c.BandwidthBytesPerSecond == 0 {
 		return ErrInvalid
@@ -10,8 +8,4 @@ func validateConfig(c Config) error {
 		return ErrInvalid
 	}
 	return nil
-}
-
-func serializeTime(bytes int, bandwidth uint64) time.Duration {
-	return time.Duration(float64(bytes) / float64(bandwidth) * float64(time.Second))
 }

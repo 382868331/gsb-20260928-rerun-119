@@ -28,12 +28,24 @@ const (
 	ReasonEmptyPacket      = "empty_packet"
 	ReasonLinkClosed       = "link_closed"
 	ReasonClosedWhileQueue = "closed_while_waiting"
+	ReasonLinkDown         = "link_down"
+	ReasonReceiverFull     = "receiver_full"
+	ReasonNoRoute          = "no_route"
+)
+
+const (
+	LocationQueue    = "queue"
+	LocationInFlight = "in_flight"
+	LocationReceiver = "receiver"
 )
 
 var (
-	ErrClosed      = errors.New("link closed")
-	ErrInvalid     = errors.New("invalid link configuration")
-	ErrBadEndpoint = errors.New("unknown endpoint")
+	ErrClosed         = errors.New("link closed")
+	ErrInvalid        = errors.New("invalid link configuration")
+	ErrBadEndpoint    = errors.New("unknown endpoint")
+	ErrNoSegment      = errors.New("unknown segment")
+	ErrNoRoute        = errors.New("route is empty or references a missing segment")
+	ErrReplayMismatch = errors.New("replay decisions do not match recorded run")
 )
 
 // Packet is one independently queued network-layer payload.
@@ -59,14 +71,29 @@ type DirectionConfig struct {
 
 // Event is a durable traffic-record entry. Times use the simulator clock.
 type Event struct {
-	Time   time.Duration `json:"time_ns"`
-	Seq    int           `json:"seq"`
-	From   Endpoint      `json:"from"`
-	To     Endpoint      `json:"to"`
-	Bytes  int           `json:"bytes"`
-	Status string        `json:"status"`
-	Reason string        `json:"reason,omitempty"`
-	Arrive time.Duration `json:"arrival_time_ns,omitempty"`
+	Time      time.Duration `json:"time_ns"`
+	Seq       int           `json:"seq"`
+	From      Endpoint      `json:"from"`
+	To        Endpoint      `json:"to"`
+	Bytes     int           `json:"bytes"`
+	Status    string        `json:"status"`
+	Reason    string        `json:"reason,omitempty"`
+	Segment   string        `json:"segment,omitempty"`
+	Location  string        `json:"location,omitempty"`
+	Occupancy int           `json:"occupancy_bytes,omitempty"`
+	Arrive    time.Duration `json:"arrival_time_ns,omitempty"`
+}
+
+// Decision is one saved random draw. Replaying a saved decision log forces
+// every loss roll to take the recorded branch, byte for byte.
+type Decision struct {
+	ID      int64    `json:"id"`
+	Kind    string   `json:"kind"`
+	Segment string   `json:"segment"`
+	From    Endpoint `json:"from"`
+	Seq     int      `json:"seq"`
+	Draw    float64  `json:"draw"`
+	Lost    bool     `json:"lost"`
 }
 
 // SubmitResult reports the unambiguous outcome of one send.
