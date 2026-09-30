@@ -18,11 +18,17 @@ type Config struct {
 }
 
 type Scenario struct {
-	Seed       uint64   `json:"seed"`
-	DurationMS int      `json:"duration_ms"`
-	AToB       Config   `json:"a_to_b"`
-	BToA       Config   `json:"b_to_a"`
-	Actions    []Action `json:"actions"`
+	Seed       uint64                    `json:"seed"`
+	Version    int                       `json:"version,omitempty"`
+	DurationMS int                       `json:"duration_ms"`
+	AToB       Config                    `json:"a_to_b"`
+	BToA       Config                    `json:"b_to_a"`
+	Actions    []Action                  `json:"actions"`
+	Links      []NetworkConfig           `json:"links,omitempty"`
+	Paths      map[string][]Hop          `json:"paths,omitempty"`
+	Receivers  map[string]ReceiverConfig `json:"receivers,omitempty"`
+	NetActions []NetworkAction           `json:"network_actions,omitempty"`
+	Decisions  []link.Decision           `json:"decisions,omitempty"`
 }
 
 type Action struct {
@@ -36,8 +42,9 @@ type Action struct {
 }
 
 type Result struct {
-	Seed   uint64       `json:"seed"`
-	Events []link.Event `json:"events"`
+	Seed      uint64          `json:"seed"`
+	Events    []link.Event    `json:"events"`
+	Decisions []link.Decision `json:"decisions,omitempty"`
 }
 
 func Load(path string) (*Scenario, error) {
@@ -56,6 +63,9 @@ func Load(path string) (*Scenario, error) {
 }
 
 func (s *Scenario) Run() (*Result, error) {
+	if s.Version == 2 {
+		return s.runV2()
+	}
 	engine, err := link.NewEngine(link.DirectionConfig{
 		AtoB: toLinkConfig(s.AToB),
 		BtoA: toLinkConfig(s.BToA),

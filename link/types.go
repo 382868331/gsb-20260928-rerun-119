@@ -14,10 +14,11 @@ const (
 )
 
 const (
-	StatusQueued    = "queued"
-	StatusDelivered = "delivered"
-	StatusDropped   = "dropped"
-	StatusClosed    = "closed"
+	StatusQueued     = "queued"
+	StatusDelivered  = "delivered"
+	StatusDropped    = "dropped"
+	StatusClosed     = "closed"
+	StatusRuleUpdate = "rule_update"
 )
 
 const (
@@ -28,6 +29,11 @@ const (
 	ReasonEmptyPacket      = "empty_packet"
 	ReasonLinkClosed       = "link_closed"
 	ReasonClosedWhileQueue = "closed_while_waiting"
+	ReasonClosedQueued     = "closed_while_queued"
+	ReasonClosedInFlight   = "closed_while_in_flight"
+	ReasonClosedReceiver   = "closed_at_receiver"
+	ReasonLinkDown         = "link_down"
+	ReasonReceiverFull     = "receiver_full"
 )
 
 var (
@@ -67,6 +73,8 @@ type Event struct {
 	Status string        `json:"status"`
 	Reason string        `json:"reason,omitempty"`
 	Arrive time.Duration `json:"arrival_time_ns,omitempty"`
+	Link   string        `json:"link,omitempty"`
+	Stage  string        `json:"stage,omitempty"`
 }
 
 // SubmitResult reports the unambiguous outcome of one send.
