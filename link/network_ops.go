@@ -188,12 +188,12 @@ func (n *Network) tryStart(id string, dir Direction) {
 func (n *Network) Advance(t time.Duration) []Delivery {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	if t > n.now {
-		n.now = t
-	}
 	var delivered []Delivery
-	for len(n.sched) > 0 && n.sched[0].at <= n.now {
+	for len(n.sched) > 0 && n.sched[0].at <= t {
 		item := heap.Pop(&n.sched).(scheduleItem)
+		if item.at > n.now {
+			n.now = item.at
+		}
 		p := n.live[item.id]
 		if p == nil || p.token != item.token {
 			continue
@@ -204,6 +204,10 @@ func (n *Network) Advance(t time.Duration) []Delivery {
 		case "receiver_arrive":
 			delivered = append(delivered, n.receiverArrive(p)...)
 		}
+		n.tickLinks()
+	}
+	if t > n.now {
+		n.now = t
 	}
 	return delivered
 }
