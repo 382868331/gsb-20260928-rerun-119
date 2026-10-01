@@ -53,6 +53,7 @@ type livePacket struct {
 	to     Endpoint
 	dir    Direction
 	data   []byte
+	rules  LinkRules
 	at     Node
 	stage  string
 	link   string

@@ -110,6 +110,10 @@ func (n *Network) random(link *networkLink, dir Direction, seq int) (float64, bo
 		d := n.replay[n.replayAt]
 		n.replayAt++
 		draw = d.Draw
+		// Keep the PRNG stream aligned with a continuous run so draws taken
+		// after a mid-run save/restore stay identical regardless of how the
+		// replay is chunked into Advance calls.
+		n.rng[dir].Float64()
 	} else {
 		draw = n.rng[dir].Float64()
 	}
@@ -126,6 +130,10 @@ func (n *Network) enqueueLink(link *networkLink, p *livePacket) {
 	p.stage = StageLink
 	p.link = link.spec.ID
 	p.cur = n.hopFor(link.spec.ID, p)
+	// Freeze the conditions in force when the packet actually enters this
+	// link. Later UpdateLink calls only affect later admissions; this packet
+	// keeps serializing and propagating under the snapshot.
+	p.rules = link.rules
 	link.queues[p.dir] = append(link.queues[p.dir], p)
 }
 
@@ -154,7 +162,8 @@ func (n *Network) tryStart(id string, dir Direction) {
 	if !link.up || len(link.queues[dir]) == 0 || link.busy[dir] > n.now {
 		return
 	}
-	if link.rules.BandwidthBytesPerSecond > 0 {
+	rules := link.queues[dir][0].rules
+	if rules.BandwidthBytesPerSecond > 0 {
 		other := DirectionBtoA
 		if dir == DirectionBtoA {
 			other = DirectionAtoB
@@ -165,9 +174,9 @@ func (n *Network) tryStart(id string, dir Direction) {
 	}
 	p := link.queues[dir][0]
 	link.queues[dir] = link.queues[dir][1:]
-	serial := serializeTime(len(p.data), link.rules.bandwidth(dir))
+	serial := serializeTime(len(p.data), rules.bandwidth(dir))
 	depart := n.now + serial
-	arrive := depart + link.rules.Latency
+	arrive := depart + rules.Latency
 	link.busy[dir] = depart
 	p.depart = depart
 	p.arrive = arrive
@@ -185,18 +194,22 @@ func (n *Network) tryStart(id string, dir Direction) {
 }
 
 // Advance runs all events due by t and returns deliveries with no waiters.
+// Each event is processed at its own scheduled time instead of the final
+// target t, so a hop reached mid-way schedules the next hop from the real
+// arrival instant. Splitting one Advance into many therefore cannot change
+// any delivery time or content.
 func (n *Network) Advance(t time.Duration) []Delivery {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	if t > n.now {
-		n.now = t
-	}
 	var delivered []Delivery
-	for len(n.sched) > 0 && n.sched[0].at <= n.now {
+	for len(n.sched) > 0 && n.sched[0].at <= t {
 		item := heap.Pop(&n.sched).(scheduleItem)
 		p := n.live[item.id]
 		if p == nil || p.token != item.token {
 			continue
+		}
+		if item.at > n.now {
+			n.now = item.at
 		}
 		switch item.kind {
 		case "link_arrive":
@@ -204,6 +217,9 @@ func (n *Network) Advance(t time.Duration) []Delivery {
 		case "receiver_arrive":
 			delivered = append(delivered, n.receiverArrive(p)...)
 		}
+	}
+	if t > n.now {
+		n.now = t
 	}
 	return delivered
 }
