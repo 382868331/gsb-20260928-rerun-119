@@ -125,7 +125,10 @@ func (s *Scenario) runV2() (*Result, error) {
 	if endAt > engine.Clock() {
 		engine.Advance(endAt)
 	}
-	return &Result{Seed: s.Seed, Events: engine.Events(), Decisions: engine.Decisions()}, nil
+	return &Result{
+		Seed: s.Seed, Events: engine.Events(),
+		Decisions: engine.Decisions(), Routes: engine.RouteDecisions(),
+	}, nil
 }
 
 func runNetworkAction(engine *link.Network, action NetworkAction) error {

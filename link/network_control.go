@@ -1,6 +1,9 @@
 package link
 
-import "time"
+import (
+	"sort"
+	"time"
+)
 
 // LinkUsage reports byte occupancy and current rules for inspection/tests.
 type LinkUsage struct {
@@ -73,6 +76,7 @@ func (n *Network) SetLinkDown(id string) error {
 			flying = append(flying, p)
 		}
 	}
+	sort.Slice(flying, func(i, j int) bool { return flying[i].id < flying[j].id })
 	for _, p := range flying {
 		n.dropLive(p, ReasonLinkDown, id, StageLink)
 	}
@@ -119,35 +123,13 @@ func (n *Network) UpdatePath(dir Direction, path []HopSpec) error {
 }
 
 func (n *Network) checkReroute(dir Direction, path []HopSpec) error {
-	if len(path) == 0 {
-		return ErrInvalid
-	}
 	var start, end Node
 	if dir == DirectionAtoB {
 		start, end = Node(A), Node(B)
 	} else {
 		start, end = Node(B), Node(A)
 	}
-	if path[0].From != start {
-		return ErrInvalid
-	}
-	for i, hop := range path {
-		l := n.links[hop.Link]
-		if l == nil || hop.From == hop.To {
-			return ErrInvalid
-		}
-		if (hop.From != l.spec.Ends[0] && hop.From != l.spec.Ends[1]) ||
-			(hop.To != l.spec.Ends[0] && hop.To != l.spec.Ends[1]) {
-			return ErrInvalid
-		}
-		if i > 0 && path[i-1].To != hop.From {
-			return ErrInvalid
-		}
-	}
-	if path[len(path)-1].To != end {
-		return ErrInvalid
-	}
-	return nil
+	return n.checkHops(path, start, end)
 }
 
 // Wait registers a virtual blocked reader at an endpoint.
@@ -175,7 +157,12 @@ func (n *Network) Close() error {
 		return nil
 	}
 	n.closed = true
+	pending := make([]*livePacket, 0, len(n.live))
 	for _, p := range n.live {
+		pending = append(pending, p)
+	}
+	sort.Slice(pending, func(i, j int) bool { return pending[i].id < pending[j].id })
+	for _, p := range pending {
 		reason := ReasonClosedInFlight
 		switch {
 		case p.stage == StageReceiver && !p.flying:

@@ -243,7 +243,7 @@ func TestCombinedFatesAreExplained(t *testing.T) {
 	if err := n.SetLinkDown("l3"); err != nil {
 		t.Fatal(err)
 	}
-	send(3) // rejected immediately: first hop is down
+	send(3) // l3 down at send time: rerouted over l1+l2
 	if err := n.SetLinkUp("l3"); err != nil {
 		t.Fatal(err)
 	}
@@ -257,9 +257,7 @@ func TestCombinedFatesAreExplained(t *testing.T) {
 	n.Advance(5 * time.Second)
 
 	want := map[int]string{
-		1: link.ReasonLinkDown,   // old path suffix vanished at the switch node
 		2: link.ReasonLinkDown,   // in flight when l3 broke
-		3: link.ReasonLinkDown,   // first hop down at send time
 		4: link.ReasonRandomLoss, // new loss rule applies to later traffic
 	}
 	events := n.Events()
@@ -272,6 +270,20 @@ func TestCombinedFatesAreExplained(t *testing.T) {
 		}
 		if !found {
 			t.Fatalf("seq %d missing explained fate %q in %+v", seq, reason, events)
+		}
+	}
+	// seq 1 was already on l1 when the path changed: at r1 the router moved
+	// it onto l2. seq 3 never entered a link while l3 was down, so it took
+	// the l1+l2 detour. Both must be delivered exactly once.
+	for _, seq := range []int{1, 3} {
+		deliveries := 0
+		for _, e := range events {
+			if e.Seq == seq && e.Status == link.StatusDelivered {
+				deliveries++
+			}
+		}
+		if deliveries != 1 {
+			t.Fatalf("seq %d delivered %d times in %+v", seq, deliveries, events)
 		}
 	}
 	for _, status := range []string{link.StatusRerouted, link.StatusLinkDown, link.StatusLinkUp, link.StatusRuleUpdate} {

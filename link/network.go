@@ -16,7 +16,7 @@ type Network struct {
 	links     map[string]*networkLink
 	paths     map[Direction][]HopSpec
 	receivers map[Endpoint]*receiver
-	rng       map[Direction]*rand.Rand
+	rng       map[Direction]*rand.PCG
 	waiters   map[Endpoint][]readWaiter
 
 	live      map[int64]*livePacket
@@ -25,6 +25,7 @@ type Network struct {
 	token     int64
 	events    []Event
 	decisions []Decision
+	routes    []RouteDecision
 	replay    []Decision
 	replayAt  int
 	closed    bool
@@ -47,20 +48,21 @@ type receiver struct {
 }
 
 type livePacket struct {
-	id     int64
-	seq    int
-	from   Endpoint
-	to     Endpoint
-	dir    Direction
-	data   []byte
-	at     Node
-	stage  string
-	link   string
-	cur    HopSpec
-	flying bool
-	depart time.Duration
-	arrive time.Duration
-	token  int64
+	id      int64
+	seq     int
+	from    Endpoint
+	to      Endpoint
+	dir     Direction
+	data    []byte
+	at      Node
+	visited map[Node]bool
+	stage   string
+	link    string
+	cur     HopSpec
+	flying  bool
+	depart  time.Duration
+	arrive  time.Duration
+	token   int64
 }
 
 type scheduleItem struct {
@@ -101,8 +103,8 @@ type NetworkOption func(*Network)
 // WithNetworkSeed makes flow directions use distinct deterministic streams.
 func WithNetworkSeed(seed uint64) NetworkOption {
 	return func(n *Network) {
-		n.rng[DirectionAtoB] = rand.New(rand.NewPCG(seed, seed+1))
-		n.rng[DirectionBtoA] = rand.New(rand.NewPCG(seed+2, seed+3))
+		n.rng[DirectionAtoB] = rand.NewPCG(seed, seed+1)
+		n.rng[DirectionBtoA] = rand.NewPCG(seed+2, seed+3)
 	}
 }
 
@@ -117,7 +119,7 @@ func NewNetwork(spec TopologySpec, opts ...NetworkOption) (*Network, error) {
 		links:     map[string]*networkLink{},
 		paths:     map[Direction][]HopSpec{},
 		receivers: map[Endpoint]*receiver{},
-		rng:       map[Direction]*rand.Rand{},
+		rng:       map[Direction]*rand.PCG{},
 		waiters:   map[Endpoint][]readWaiter{A: {}, B: {}},
 		live:      map[int64]*livePacket{},
 	}
@@ -125,8 +127,8 @@ func NewNetwork(spec TopologySpec, opts ...NetworkOption) (*Network, error) {
 		opt(n)
 	}
 	if n.rng[DirectionAtoB] == nil {
-		n.rng[DirectionAtoB] = rand.New(rand.NewPCG(1, 2))
-		n.rng[DirectionBtoA] = rand.New(rand.NewPCG(3, 4))
+		n.rng[DirectionAtoB] = rand.NewPCG(1, 2)
+		n.rng[DirectionBtoA] = rand.NewPCG(3, 4)
 	}
 
 	for i := range spec.Links {
@@ -172,37 +174,11 @@ func NewNetwork(spec TopologySpec, opts ...NetworkOption) (*Network, error) {
 }
 
 func (n *Network) checkPath(dir Direction, path []HopSpec) error {
-	if len(path) == 0 {
-		return ErrInvalid
-	}
 	var start, end Node
 	if dir == DirectionAtoB {
 		start, end = Node(A), Node(B)
 	} else {
 		start, end = Node(B), Node(A)
 	}
-	for i, hop := range path {
-		link := n.links[hop.Link]
-		if link == nil {
-			return ErrInvalid
-		}
-		wantFrom, wantTo := start, Node("")
-		if i > 0 {
-			wantFrom = path[i-1].To
-		}
-		wantTo = end
-		if i+1 < len(path) {
-			wantTo = path[i+1].From
-		}
-		if hop.From != wantFrom || hop.To != wantTo {
-			return ErrInvalid
-		}
-		if hop.From != link.spec.Ends[0] && hop.From != link.spec.Ends[1] {
-			return ErrInvalid
-		}
-		if hop.To != link.spec.Ends[0] && hop.To != link.spec.Ends[1] || hop.From == hop.To {
-			return ErrInvalid
-		}
-	}
-	return nil
+	return n.checkHops(path, start, end)
 }

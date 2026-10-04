@@ -34,12 +34,16 @@ const (
 	ReasonClosedReceiver   = "closed_at_receiver"
 	ReasonLinkDown         = "link_down"
 	ReasonReceiverFull     = "receiver_full"
+	ReasonNoRoute          = "no_route"
+	ReasonRoutingLoop      = "routing_loop"
 )
 
 var (
 	ErrClosed      = errors.New("link closed")
 	ErrInvalid     = errors.New("invalid link configuration")
 	ErrBadEndpoint = errors.New("unknown endpoint")
+	ErrNoRoute     = errors.New("path does not reach the destination")
+	ErrRoutingLoop = errors.New("path contains a routing loop")
 )
 
 // Packet is one independently queued network-layer payload.

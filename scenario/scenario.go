@@ -42,9 +42,10 @@ type Action struct {
 }
 
 type Result struct {
-	Seed      uint64          `json:"seed"`
-	Events    []link.Event    `json:"events"`
-	Decisions []link.Decision `json:"decisions,omitempty"`
+	Seed      uint64               `json:"seed"`
+	Events    []link.Event         `json:"events"`
+	Decisions []link.Decision      `json:"decisions,omitempty"`
+	Routes    []link.RouteDecision `json:"routes,omitempty"`
 }
 
 func Load(path string) (*Scenario, error) {
