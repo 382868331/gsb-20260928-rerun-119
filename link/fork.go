@@ -12,8 +12,22 @@ func (n *Network) RouteDecisions() []RouteDecision {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	out := make([]RouteDecision, len(n.routes))
-	copy(out, n.routes)
+	for i, rd := range n.routes {
+		out[i] = cloneRouteDecision(rd)
+	}
 	return out
+}
+
+// cloneRouteDecision deep-copies the slices carried by one decision so a
+// shared snapshot can never be rewritten through an exported copy.
+func cloneRouteDecision(rd RouteDecision) RouteDecision {
+	if rd.Down != nil {
+		rd.Down = append([]string(nil), rd.Down...)
+	}
+	if rd.Candidates != nil {
+		rd.Candidates = append([]CandidateLink(nil), rd.Candidates...)
+	}
+	return rd
 }
 
 // InFlight lists every unfinished packet and where it currently rests,
@@ -55,7 +69,7 @@ func (n *Network) Fork() *Network {
 		token:     n.token,
 		events:    append([]Event(nil), n.events...),
 		decisions: append([]Decision(nil), n.decisions...),
-		routes:    append([]RouteDecision(nil), n.routes...),
+		routes:    cloneRouteDecisions(n.routes),
 		replay:    append([]Decision(nil), n.replay...),
 		replayAt:  n.replayAt,
 		closed:    n.closed,
@@ -104,6 +118,14 @@ func (n *Network) Fork() *Network {
 	m.sched = append(schedule(nil), n.sched...)
 	heap.Init(&m.sched)
 	return m
+}
+
+func cloneRouteDecisions(in []RouteDecision) []RouteDecision {
+	out := make([]RouteDecision, len(in))
+	for i, rd := range in {
+		out[i] = cloneRouteDecision(rd)
+	}
+	return out
 }
 
 func cloneMap[K comparable, V any](in map[K]V) map[K]V {

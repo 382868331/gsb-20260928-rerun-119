@@ -92,9 +92,40 @@ func (n *Network) searchRoute(p *livePacket, at, dest Node) (HopSpec, *networkLi
 func (n *Network) recordRoute(p *livePacket, at Node, hop HopSpec, reason string) {
 	rd := RouteDecision{
 		TimeNS: int64(n.now), Seq: p.seq, At: at,
-		Link: hop.Link, To: hop.To, Down: n.downLinks(), Reason: reason,
+		Link: hop.Link, To: hop.To, Down: n.downLinks(),
+		Candidates: n.candidateLinks(p.dir, at), Reason: reason,
 	}
 	n.routes = append(n.routes, rd)
+}
+
+// candidateLinks snapshots every link leaving node at at the current instant:
+// its up/down state and the bandwidth the flow's direction would serialize
+// with. The copy is taken once, at decision time, so later bandwidth updates
+// cannot change what an old record claims the router knew.
+func (n *Network) candidateLinks(dir Direction, at Node) []CandidateLink {
+	ids := make([]string, 0, len(n.links))
+	for id := range n.links {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	candidates := make([]CandidateLink, 0, len(ids))
+	for _, id := range ids {
+		l := n.links[id]
+		var next Node
+		switch at {
+		case l.spec.Ends[0]:
+			next = l.spec.Ends[1]
+		case l.spec.Ends[1]:
+			next = l.spec.Ends[0]
+		default:
+			continue
+		}
+		candidates = append(candidates, CandidateLink{
+			Link: id, To: next, Up: l.up,
+			BandwidthBytesPerSecond: l.rules.bandwidth(dir),
+		})
+	}
+	return candidates
 }
 
 func (n *Network) downLinks() []string {

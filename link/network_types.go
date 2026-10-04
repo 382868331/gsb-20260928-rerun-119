@@ -73,13 +73,26 @@ type Decision struct {
 // router knew at decision time: which links were down, which link and next
 // node were chosen, and the stop reason when no usable next hop existed.
 type RouteDecision struct {
-	TimeNS int64    `json:"time_ns"`
-	Seq    int      `json:"seq"`
-	At     Node     `json:"at"`
-	Link   string   `json:"link,omitempty"`
-	To     Node     `json:"to,omitempty"`
-	Down   []string `json:"down,omitempty"`
-	Reason string   `json:"reason,omitempty"`
+	TimeNS     int64           `json:"time_ns"`
+	Seq        int             `json:"seq"`
+	At         Node            `json:"at"`
+	Link       string          `json:"link,omitempty"`
+	To         Node            `json:"to,omitempty"`
+	Down       []string        `json:"down,omitempty"`
+	Candidates []CandidateLink `json:"candidates,omitempty"`
+	Reason     string          `json:"reason,omitempty"`
+}
+
+// CandidateLink is an immutable snapshot of one candidate next-hop link at
+// the moment a RouteDecision was made. BandwidthBytesPerSecond is the
+// serializer speed the deciding flow direction saw then; later rule updates
+// never rewrite it, so an old decision can always explain itself from its
+// own facts instead of the current link rules.
+type CandidateLink struct {
+	Link                    string `json:"link"`
+	To                      Node   `json:"to"`
+	Up                      bool   `json:"up"`
+	BandwidthBytesPerSecond uint64 `json:"bandwidth_bps"`
 }
 
 // Fragment locates one unfinished packet inside the topology.
