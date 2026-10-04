@@ -46,8 +46,9 @@ type NetworkScenario struct {
 type NetworkAction struct {
 	TimeMS int `json:"time_ms"`
 	ActionCommon
-	Path string `json:"path,omitempty"`
-	Hops []Hop  `json:"hops,omitempty"`
+	Path  string   `json:"path,omitempty"`
+	Hops  []Hop    `json:"hops,omitempty"`
+	Links []string `json:"links,omitempty"`
 	NetworkConfig
 }
 
@@ -58,12 +59,15 @@ type ActionCommon struct {
 	Size int    `json:"size,omitempty"`
 	Data string `json:"data,omitempty"`
 	Link string `json:"link,omitempty"`
+	Node string `json:"node,omitempty"`
+	Dest string `json:"dest,omitempty"`
 }
 
 func (s *Scenario) runV2() (*Result, error) {
 	spec := link.TopologySpec{
 		Links:     make([]link.LinkSpec, 0, len(s.Links)),
 		Paths:     map[link.Direction][]link.HopSpec{},
+		Routes:    map[link.Node]map[link.Node][]string{},
 		Receivers: map[link.Endpoint]link.ReceiverSpec{},
 	}
 	for _, l := range s.Links {
@@ -104,6 +108,15 @@ func (s *Scenario) runV2() (*Result, error) {
 			QueueBytes:         rc.QueueBytes,
 		}
 	}
+	for from, byDest := range s.Routes {
+		spec.Routes[link.Node(from)] = map[link.Node][]string{}
+		for dest, links := range byDest {
+			spec.Routes[link.Node(from)][link.Node(dest)] = append([]string(nil), links...)
+		}
+	}
+	if len(spec.Routes) == 0 {
+		spec.Routes = nil
+	}
 	engine, err := link.NewNetwork(spec, link.WithNetworkSeed(s.Seed), link.WithRecordedDecisions(s.Decisions))
 	if err != nil {
 		return nil, err
@@ -125,7 +138,12 @@ func (s *Scenario) runV2() (*Result, error) {
 	if endAt > engine.Clock() {
 		engine.Advance(endAt)
 	}
-	return &Result{Seed: s.Seed, Events: engine.Events(), Decisions: engine.Decisions()}, nil
+	return &Result{
+		Seed:           s.Seed,
+		Events:         engine.Events(),
+		Decisions:      engine.Decisions(),
+		RouteDecisions: engine.RouteDecisions(),
+	}, nil
 }
 
 func runNetworkAction(engine *link.Network, action NetworkAction) error {
@@ -158,6 +176,8 @@ func runNetworkAction(engine *link.Network, action NetworkAction) error {
 		return engine.SetLinkDown(action.Link)
 	case "link_up":
 		return engine.SetLinkUp(action.Link)
+	case "update_route":
+		return engine.UpdateRoute(link.Node(action.Node), link.Node(action.Dest), action.Links)
 	case "update_path":
 		dir, err := direction(action.Path)
 		if err != nil {

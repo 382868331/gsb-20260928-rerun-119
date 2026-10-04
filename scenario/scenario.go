@@ -18,17 +18,18 @@ type Config struct {
 }
 
 type Scenario struct {
-	Seed       uint64                    `json:"seed"`
-	Version    int                       `json:"version,omitempty"`
-	DurationMS int                       `json:"duration_ms"`
-	AToB       Config                    `json:"a_to_b"`
-	BToA       Config                    `json:"b_to_a"`
-	Actions    []Action                  `json:"actions"`
-	Links      []NetworkConfig           `json:"links,omitempty"`
-	Paths      map[string][]Hop          `json:"paths,omitempty"`
-	Receivers  map[string]ReceiverConfig `json:"receivers,omitempty"`
-	NetActions []NetworkAction           `json:"network_actions,omitempty"`
-	Decisions  []link.Decision           `json:"decisions,omitempty"`
+	Seed       uint64                         `json:"seed"`
+	Version    int                            `json:"version,omitempty"`
+	DurationMS int                            `json:"duration_ms"`
+	AToB       Config                         `json:"a_to_b"`
+	BToA       Config                         `json:"b_to_a"`
+	Actions    []Action                       `json:"actions"`
+	Links      []NetworkConfig                `json:"links,omitempty"`
+	Paths      map[string][]Hop               `json:"paths,omitempty"`
+	Routes     map[string]map[string][]string `json:"routes,omitempty"`
+	Receivers  map[string]ReceiverConfig      `json:"receivers,omitempty"`
+	NetActions []NetworkAction                `json:"network_actions,omitempty"`
+	Decisions  []link.Decision                `json:"decisions,omitempty"`
 }
 
 type Action struct {
@@ -42,9 +43,10 @@ type Action struct {
 }
 
 type Result struct {
-	Seed      uint64          `json:"seed"`
-	Events    []link.Event    `json:"events"`
-	Decisions []link.Decision `json:"decisions,omitempty"`
+	Seed           uint64               `json:"seed"`
+	Events         []link.Event         `json:"events"`
+	Decisions      []link.Decision      `json:"decisions,omitempty"`
+	RouteDecisions []link.RouteDecision `json:"route_decisions,omitempty"`
 }
 
 func Load(path string) (*Scenario, error) {

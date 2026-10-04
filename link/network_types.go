@@ -52,9 +52,15 @@ type ReceiverSpec struct {
 }
 
 // TopologySpec is the deterministic multi-hop network configuration.
+//
+// Routes, when non-nil, enables dynamic routing: each node picks its next hop
+// from Routes[node][destination], an ordered list of candidate link IDs. The
+// first link that is currently up wins and the choice is recorded with the
+// link-state facts known at that moment. Paths is then optional.
 type TopologySpec struct {
 	Links     []LinkSpec
 	Paths     map[Direction][]HopSpec
+	Routes    map[Node]map[Node][]string
 	Receivers map[Endpoint]ReceiverSpec
 }
 

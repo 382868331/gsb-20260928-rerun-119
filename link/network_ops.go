@@ -57,8 +57,21 @@ func (n *Network) Send(from Endpoint, seq int, data []byte) (SubmitResult, error
 	}
 	size := len(data)
 	dir := flowDirection(from, to)
-	hops := n.paths[dir]
-	first := n.links[hops[0].Link]
+	var firstHop HopSpec
+	if n.dynamic() {
+		hop, stop := n.chooseHop(Node(from), dir, seq, []Node{Node(from)})
+		if stop != "" {
+			n.record(Event{
+				Time: n.now, Seq: seq, From: from, To: to, Bytes: size,
+				Status: StatusDropped, Reason: stop, Link: hop.Link, Stage: StageLink,
+			})
+			return SubmitResult{Status: StatusDropped, Reason: stop}, nil
+		}
+		firstHop = hop
+	} else {
+		firstHop = n.paths[dir][0]
+	}
+	first := n.links[firstHop.Link]
 	reason := ""
 	switch {
 	case size == 0:
@@ -79,24 +92,26 @@ func (n *Network) Send(from Endpoint, seq int, data []byte) (SubmitResult, error
 	if reason != "" {
 		n.record(Event{
 			Time: n.now, Seq: seq, From: from, To: to, Bytes: size,
-			Status: StatusDropped, Reason: reason, Link: hops[0].Link, Stage: StageLink,
+			Status: StatusDropped, Reason: reason, Link: firstHop.Link, Stage: StageLink,
 		})
 		return SubmitResult{Status: StatusDropped, Reason: reason}, nil
 	}
 	p := &livePacket{
-		id:   n.nextID,
-		seq:  seq,
-		from: from,
-		to:   to,
-		dir:  dir,
-		data: append([]byte(nil), data...),
-		at:   Node(from),
+		id:      n.nextID,
+		seq:     seq,
+		from:    from,
+		to:      to,
+		dir:     dir,
+		data:    append([]byte(nil), data...),
+		at:      Node(from),
+		cur:     firstHop,
+		visited: []Node{Node(from)},
 	}
 	n.nextID++
 	n.live[p.id] = p
 	n.record(Event{
 		Time: n.now, Seq: seq, From: from, To: to, Bytes: size,
-		Status: StatusQueued, Link: hops[0].Link, Stage: StageLink,
+		Status: StatusQueued, Link: firstHop.Link, Stage: StageLink,
 	})
 	n.enqueueLink(first, p)
 	n.tickLinks()
@@ -125,17 +140,11 @@ func (n *Network) enqueueLink(link *networkLink, p *livePacket) {
 	link.used += len(p.data)
 	p.stage = StageLink
 	p.link = link.spec.ID
-	p.cur = n.hopFor(link.spec.ID, p)
 	link.queues[p.dir] = append(link.queues[p.dir], p)
 }
 
-func (n *Network) hopFor(linkID string, p *livePacket) HopSpec {
-	for _, hop := range n.paths[p.dir] {
-		if hop.Link == linkID {
-			return hop
-		}
-	}
-	return HopSpec{Link: linkID, From: p.at}
+func (n *Network) dynamic() bool {
+	return len(n.routes) > 0
 }
 
 func (n *Network) tickLinks() {
@@ -230,19 +239,30 @@ func (n *Network) linkArrive(p *livePacket, item scheduleItem) []Delivery {
 	if Node(p.to) == reached {
 		return n.enterReceiver(p)
 	}
-	hops := n.paths[p.dir]
-	nextIndex := -1
-	for i := range hops {
-		if hops[i].From == reached {
-			nextIndex = i
-			break
+	p.visited = append(p.visited, reached)
+	var next HopSpec
+	if n.dynamic() {
+		hop, stop := n.chooseHop(reached, p.dir, p.seq, p.visited)
+		if stop != "" {
+			n.dropLive(p, stop, hop.Link, StageLink)
+			return nil
 		}
+		next = hop
+	} else {
+		hops := n.paths[p.dir]
+		nextIndex := -1
+		for i := range hops {
+			if hops[i].From == reached {
+				nextIndex = i
+				break
+			}
+		}
+		if nextIndex < 0 {
+			n.dropLive(p, ReasonLinkDown, "", "")
+			return nil
+		}
+		next = hops[nextIndex]
 	}
-	if nextIndex < 0 {
-		n.dropLive(p, ReasonLinkDown, "", "")
-		return nil
-	}
-	next := hops[nextIndex]
 	nextLink := n.links[next.Link]
 	size := len(p.data)
 	switch {
@@ -255,10 +275,12 @@ func (n *Network) linkArrive(p *livePacket, item scheduleItem) []Delivery {
 		if dropped {
 			n.dropLive(p, ReasonRandomLoss, next.Link, StageLink)
 		} else {
+			p.cur = next
 			n.enqueueLink(nextLink, p)
 			n.tickLinks()
 		}
 	default:
+		p.cur = next
 		n.enqueueLink(nextLink, p)
 		n.tickLinks()
 	}

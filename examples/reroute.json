@@ -1,0 +1,32 @@
+{
+  "version": 2,
+  "seed": 19,
+  "duration_ms": 20000,
+  "links": [
+    {"id": "l1", "ends": ["a", "r1"], "latency_ms": 1000, "queue_bytes": 1048576, "bandwidth_a_to_b": 100, "bandwidth_b_to_a": 10000},
+    {"id": "l2", "ends": ["r1", "b"], "latency_ms": 1000, "queue_bytes": 1048576, "bandwidth_bps": 1048576},
+    {"id": "l3", "ends": ["a", "r2"], "latency_ms": 1000, "queue_bytes": 1048576, "bandwidth_bps": 1048576},
+    {"id": "l4", "ends": ["r2", "b"], "latency_ms": 1000, "queue_bytes": 1048576, "bandwidth_bps": 1048576}
+  ],
+  "routes": {
+    "a": {"b": ["l1", "l3"]},
+    "r1": {"b": ["l2"], "a": ["l1"]},
+    "r2": {"b": ["l4"], "a": ["l3"]},
+    "b": {"a": ["l2", "l4"]}
+  },
+  "receivers": {
+    "a": {"rate_bps": 0, "queue_bytes": 1048576},
+    "b": {"rate_bps": 0, "queue_bytes": 1048576}
+  },
+  "network_actions": [
+    {"time_ms": 0, "op": "send", "from": "a", "seq": 1, "data": "frag-1"},
+    {"time_ms": 100, "op": "send", "from": "a", "seq": 2, "data": "frag-2"},
+    {"time_ms": 1500, "op": "link_down", "link": "l2"},
+    {"time_ms": 1600, "op": "update_route", "node": "a", "dest": "b", "links": ["l3"]},
+    {"time_ms": 1700, "op": "send", "from": "a", "seq": 3, "data": "frag-3"},
+    {"time_ms": 2000, "op": "link_up", "link": "l2"},
+    {"time_ms": 2100, "op": "update_link", "link": "l4", "latency_ms": 1000, "queue_bytes": 1048576, "bandwidth_bps": 100},
+    {"time_ms": 2200, "op": "send", "from": "a", "seq": 4, "data": "frag-4"},
+    {"time_ms": 2300, "op": "send", "from": "b", "seq": 5, "data": "frag-5"}
+  ]
+}
