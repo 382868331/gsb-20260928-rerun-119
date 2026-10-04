@@ -88,13 +88,34 @@ func (n *Network) searchRoute(p *livePacket, at, dest Node) (HopSpec, *networkLi
 	return HopSpec{}, nil, false
 }
 
-// recordRoute appends the decision with the down-link facts known now.
+// recordRoute appends the decision with the link facts known now: the
+// down-list plus a per-link state and bandwidth snapshot, so a later
+// update can never change what this decision saw.
 func (n *Network) recordRoute(p *livePacket, at Node, hop HopSpec, reason string) {
 	rd := RouteDecision{
 		TimeNS: int64(n.now), Seq: p.seq, At: at,
-		Link: hop.Link, To: hop.To, Down: n.downLinks(), Reason: reason,
+		Link: hop.Link, To: hop.To, Down: n.downLinks(),
+		Links: n.linkFacts(p.dir), Reason: reason,
 	}
 	n.routes = append(n.routes, rd)
+}
+
+// linkFacts snapshots every link's up-state and the bandwidth the given
+// direction would use right now, in sorted link order for stable output.
+func (n *Network) linkFacts(dir Direction) []LinkFact {
+	ids := make([]string, 0, len(n.links))
+	for id := range n.links {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	facts := make([]LinkFact, 0, len(ids))
+	for _, id := range ids {
+		l := n.links[id]
+		facts = append(facts, LinkFact{
+			Link: id, Up: l.up, BandwidthBps: l.rules.bandwidth(dir),
+		})
+	}
+	return facts
 }
 
 func (n *Network) downLinks() []string {

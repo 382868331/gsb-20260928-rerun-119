@@ -1,6 +1,7 @@
 package link_test
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
@@ -266,6 +267,97 @@ func TestForkComparesTwoRoutingFutures(t *testing.T) {
 	// seq 1 was already on l1 in both futures and must not be moved.
 	if got := linkOf(sw, 1); got != "l1" {
 		t.Fatalf("switched fork moved in-flight seq 1: %q", got)
+	}
+}
+
+// A bandwidth change on the configured route (high then low) must not move
+// a fragment already serializing on that link, while a later packet routes
+// under the new facts. Each route decision keeps its own bandwidth snapshot,
+// and a link down/up cycle neither duplicates deliveries nor rewrites the
+// recorded decisions.
+func TestBandwidthChangeKeepsDecisionFacts(t *testing.T) {
+	n, err := link.NewNetwork(drillSpec(), link.WithNetworkSeed(11))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer n.Close()
+	send := func(seq int, data []byte) {
+		t.Helper()
+		if _, err := n.Send(link.A, seq, data); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// seq 1: 1000 bytes serialize on l1 in 1s, reach r1 at 1.1s, then
+	// serialize on l2 at the old 2000 B/s and arrive at b at 1.7s.
+	send(1, make([]byte, 1000))
+	if got := n.Advance(1200 * time.Millisecond); len(got) != 0 {
+		t.Fatalf("seq 1 should still be in flight on l2: %+v", got)
+	}
+	// Halve l2 while seq 1 is flying on it; seq 1 keeps its old schedule.
+	slow := link.LinkRules{
+		Latency: 100 * time.Millisecond, QueueBytes: 1 << 20,
+		BandwidthAtoB: 1000, BandwidthBtoA: 2000,
+	}
+	if err := n.UpdateLink("l2", slow); err != nil {
+		t.Fatal(err)
+	}
+	// seq 2 enters l1 at 1.2s, reaches r1 at 2.3s and must use the new
+	// 1000 B/s: 1s serialization after 2.3s, plus 100ms latency.
+	send(2, make([]byte, 1000))
+	delivered := n.Advance(5 * time.Second)
+	times := map[int]time.Duration{}
+	for _, d := range delivered {
+		times[d.Packet.Seq] = d.Time
+	}
+	if times[1] != 1700*time.Millisecond {
+		t.Fatalf("in-flight seq 1 was rescheduled by the update: %v", times[1])
+	}
+	if times[2] != 3400*time.Millisecond {
+		t.Fatalf("seq 2 ignored the lower bandwidth: %v", times[2])
+	}
+
+	fact := func(seq int, at link.Node, id string) (link.LinkFact, bool) {
+		for _, rd := range n.RouteDecisions() {
+			if rd.Seq != seq || rd.At != at {
+				continue
+			}
+			for _, f := range rd.Links {
+				if f.Link == id {
+					return f, true
+				}
+			}
+		}
+		return link.LinkFact{}, false
+	}
+	f1, ok := fact(1, "r1", "l2")
+	if !ok || !f1.Up || f1.BandwidthBps != 2000 {
+		t.Fatalf("seq 1 decision lost its 2000 B/s fact: %+v", f1)
+	}
+	f2, ok := fact(2, "r1", "l2")
+	if !ok || !f2.Up || f2.BandwidthBps != 1000 {
+		t.Fatalf("seq 2 decision lost its 1000 B/s fact: %+v", f2)
+	}
+
+	// A down/up cycle after delivery must not replay anything or rewrite
+	// the recorded decisions.
+	before := n.RouteDecisions()
+	if err := n.SetLinkDown("l2"); err != nil {
+		t.Fatal(err)
+	}
+	if err := n.SetLinkUp("l2"); err != nil {
+		t.Fatal(err)
+	}
+	if got := n.Advance(6 * time.Second); len(got) != 0 {
+		t.Fatalf("recovery redelivered old fragments: %+v", got)
+	}
+	if after := n.RouteDecisions(); !reflect.DeepEqual(before, after) {
+		t.Fatalf("recovery rewrote decision records:\n%+v\n%+v", before, after)
+	}
+	// Records handed out earlier are snapshots: mutating one must not
+	// change what the network still reports.
+	before[0].Links[0].BandwidthBps = 1
+	if got := n.RouteDecisions(); reflect.DeepEqual(before, got) {
+		t.Fatal("returned route records share state with the network")
 	}
 }
 

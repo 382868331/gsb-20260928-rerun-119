@@ -6,13 +6,23 @@ import (
 	"sort"
 )
 
-// RouteDecisions returns a copy of every recorded next-hop choice, in the
-// order the router made them.
+// RouteDecisions returns a deep copy of every recorded next-hop choice, in
+// the order the router made them. Each record keeps the facts snapshot at
+// its own decision time; callers never observe later link updates through
+// an old record.
 func (n *Network) RouteDecisions() []RouteDecision {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	out := make([]RouteDecision, len(n.routes))
-	copy(out, n.routes)
+	return cloneRoutes(n.routes)
+}
+
+func cloneRoutes(in []RouteDecision) []RouteDecision {
+	out := make([]RouteDecision, len(in))
+	for i, rd := range in {
+		out[i] = rd
+		out[i].Down = append([]string(nil), rd.Down...)
+		out[i].Links = append([]LinkFact(nil), rd.Links...)
+	}
 	return out
 }
 
@@ -55,7 +65,7 @@ func (n *Network) Fork() *Network {
 		token:     n.token,
 		events:    append([]Event(nil), n.events...),
 		decisions: append([]Decision(nil), n.decisions...),
-		routes:    append([]RouteDecision(nil), n.routes...),
+		routes:    cloneRoutes(n.routes),
 		replay:    append([]Decision(nil), n.replay...),
 		replayAt:  n.replayAt,
 		closed:    n.closed,

@@ -69,17 +69,28 @@ type Decision struct {
 	Dropped  bool    `json:"dropped"`
 }
 
+// LinkFact is the decision-time snapshot of one candidate link: whether it
+// was up and the bandwidth the packet's direction would have used then.
+// Later rule updates never rewrite a recorded fact.
+type LinkFact struct {
+	Link         string `json:"link"`
+	Up           bool   `json:"up"`
+	BandwidthBps uint64 `json:"bandwidth_bps"`
+}
+
 // RouteDecision is one recorded next-hop choice. It keeps the facts the
-// router knew at decision time: which links were down, which link and next
-// node were chosen, and the stop reason when no usable next hop existed.
+// router knew at decision time: which links were down, the state and
+// bandwidth of every candidate link, which link and next node were chosen,
+// and the stop reason when no usable next hop existed.
 type RouteDecision struct {
-	TimeNS int64    `json:"time_ns"`
-	Seq    int      `json:"seq"`
-	At     Node     `json:"at"`
-	Link   string   `json:"link,omitempty"`
-	To     Node     `json:"to,omitempty"`
-	Down   []string `json:"down,omitempty"`
-	Reason string   `json:"reason,omitempty"`
+	TimeNS int64      `json:"time_ns"`
+	Seq    int        `json:"seq"`
+	At     Node       `json:"at"`
+	Link   string     `json:"link,omitempty"`
+	To     Node       `json:"to,omitempty"`
+	Down   []string   `json:"down,omitempty"`
+	Links  []LinkFact `json:"links,omitempty"`
+	Reason string     `json:"reason,omitempty"`
 }
 
 // Fragment locates one unfinished packet inside the topology.
